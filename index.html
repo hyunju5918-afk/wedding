@@ -1026,11 +1026,10 @@ wireRadioRow('rsvpSide');
 var gbList = document.getElementById('gbList');
 var gbEmpty = document.getElementById('gbEmpty');
 var gbMoreBtn = document.getElementById('gbMore');
-var GB_KEY = 'guestbook:entries';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbxXERbiNBFV_E1wLrfPwRptCjUc72bUsSbI7o0XZpsj3ZpKTNjtxSK7MJoov5ALaUTz/exec';
 var gbEntries = [];
 var gbVisible = 3;
 var gbEditingId = null;
-var hasStorage = !!(window.storage && window.storage.get && window.storage.set);
 
 function renderGuestbook(){
 gbList.innerHTML = '';
@@ -1076,26 +1075,24 @@ gbMoreBtn.style.display = 'none';
 }
 
 function loadGuestbook(){
-if (!hasStorage) {
-renderGuestbook();
-return;
-}
-window.storage.get(GB_KEY, true).then(function(res){
-try { gbEntries = res && res.value ? JSON.parse(res.value) : []; }
-catch (e) { gbEntries = []; }
+fetch(GAS_URL).then(function(res){ return res.json(); }).then(function(list){
+gbEntries = Array.isArray(list) ? list : [];
 gbEntries.sort(function(a,b){ return (b.ts || 0) - (a.ts || 0); });
 renderGuestbook();
 }).catch(function(){
 gbEntries = [];
 renderGuestbook();
+showToast('방명록을 불러오지 못했어요. 잠시 후 다시 시도해주세요');
 });
 }
 
-function saveGuestbook(){
-if (!hasStorage) return Promise.resolve();
-return window.storage.set(GB_KEY, JSON.stringify(gbEntries), true).catch(function(){
-showToast('저장에 실패했어요. 잠시 후 다시 시도해주세요');
-});
+function gbApiCall(payload){
+/* Content-Type을 text/plain으로 보내야 Apps Script와의 CORS preflight 문제를 피할 수 있습니다 */
+return fetch(GAS_URL, {
+method: 'POST',
+headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+body: JSON.stringify(payload)
+}).then(function(res){ return res.json(); });
 }
 
 gbMoreBtn.addEventListener('click', function(){
@@ -1122,7 +1119,13 @@ gbVisible = Math.max(gbVisible, 3);
 renderGuestbook();
 this.reset();
 closeModal('gbModal');
-saveGuestbook().then(function(){ showToast('따뜻한 메시지가 등록되었습니다'); });
+gbApiCall({ action: 'add', id: entry.id, name: entry.name, message: entry.message, password: entry.password, date: entry.date, ts: entry.ts })
+.then(function(res){
+if (res && res.ok) { showToast('따뜻한 메시지가 등록되었습니다'); }
+else { showToast('저장에 실패했어요. 잠시 후 다시 시도해주세요'); }
+}).catch(function(){
+showToast('저장에 실패했어요. 잠시 후 다시 시도해주세요');
+});
 });
 
 gbList.addEventListener('click', function(e){
@@ -1141,20 +1144,24 @@ var pw = document.getElementById('gbEditPw').value.trim();
 if (!pw) return;
 var entry = gbEntries.filter(function(m){ return m.id === gbEditingId; })[0];
 if (!entry) { closeModal('gbEditModal'); return; }
-if (entry.password !== pw) {
-showToast('비밀번호가 일치하지 않습니다');
-return;
-}
+gbApiCall({ action: 'delete', id: gbEditingId, password: pw }).then(function(res){
+if (res && res.ok) {
 gbEntries = gbEntries.filter(function(m){ return m.id !== gbEditingId; });
 renderGuestbook();
 closeModal('gbEditModal');
-saveGuestbook().then(function(){ showToast('메시지가 삭제되었습니다'); });
+showToast('메시지가 삭제되었습니다');
+} else {
+showToast('비밀번호가 일치하지 않습니다');
+}
+}).catch(function(){
+showToast('삭제에 실패했어요. 잠시 후 다시 시도해주세요');
+});
 });
 
 loadGuestbook();
-/* 참고: 방명록은 window.storage(shared)에 저장되어 이 청첩장 링크를 보는 모든 분에게 함께 보입니다.
-비밀번호는 본인 글 확인용 간단한 장치이며 별도 암호화는 되어 있지 않으니 개인정보성 비밀번호는 피해주세요.
-Claude.ai 환경 밖에서 이 파일을 단독으로 호스팅하면 window.storage를 사용할 수 없어 새로고침 시 메시지가 초기화됩니다. */
+/* 참고: 방명록은 구글 스프레드시트(Apps Script 웹앱, GAS_URL)에 저장되어 이 청첩장 링크를 보는 모든 분에게 함께 보입니다.
+비밀번호는 본인 글 삭제 확인용 간단한 장치이며(서버 측에서 대조) 별도 암호화는 되어 있지 않으니 개인정보성 비밀번호는 피해주세요.
+GAS_URL이 잘못되었거나 Apps Script 배포 액세스 권한이 "모든 사용자"가 아니면 방명록 조회/저장이 실패할 수 있습니다. */
 /* ---------- 9. RSVP ---------- */
 document.getElementById('rsvpForm').addEventListener('submit', function(e){
 e.preventDefault();
