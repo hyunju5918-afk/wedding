@@ -1167,13 +1167,34 @@ document.getElementById('rsvpForm').addEventListener('submit', function(e){
 e.preventDefault();
 var name = document.getElementById('rsName').value.trim();
 if (!name) return;
+var attendInput = document.querySelector('#rsvpAttend input[name="attend"]:checked');
+var sideInput = document.querySelector('#rsvpSide input[name="side"]:checked');
+var count = document.getElementById('rsCount').value;
+var payload = {
+action: 'rsvp',
+id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+name: name,
+attend: attendInput ? attendInput.value : '참석합니다',
+side: sideInput ? sideInput.value : '신랑측',
+count: count,
+date: new Date().toLocaleDateString('ko-KR'),
+ts: Date.now()
+};
 this.reset();
 document.querySelectorAll('#rsvpAttend .radio-opt, #rsvpSide .radio-opt').forEach(function(o, idx){ o.classList.remove('checked'); });
 document.querySelector('#rsvpAttend .radio-opt[data-value="attend"]').classList.add('checked');
 document.querySelector('#rsvpSide .radio-opt[data-value="groom"]').classList.add('checked');
 closeModal('rsvpModal');
+gbApiCall(payload).then(function(res){
+if (res && res.ok) {
 showToast(name + '님, 참석 의사가 전달되었습니다. 감사합니다.');
-/* 참고: 실제 운영 시에는 이 지점에서 서버 API 또는 구글폼 등으로 데이터를 전송하세요. */
+} else {
+showToast('전달에 실패했어요. 잠시 후 다시 시도해주세요');
+}
+}).catch(function(){
+showToast('전달에 실패했어요. 잠시 후 다시 시도해주세요');
+});
+/* 참고: RSVP 응답은 구글 시트의 'RSVP' 탭에 저장됩니다. 신랑신부님은 해당 시트를 열어 바로 확인할 수 있습니다. */
 });
 /* ---------- 10. share ---------- */
 document.getElementById('copyLink').addEventListener('click', function(){
